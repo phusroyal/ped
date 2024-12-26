@@ -125,6 +125,9 @@ class StreamingCsvDataset(IterableDataset):
             special_tokens={**enc._special_tokens, **new_special_tokens},  # Extend special tokens
         )
 
+    def __len__(self):
+        return 3700000
+
     def parse_csv_rows(self, file_path):
         """
         Generator that yields lines from one CSV file.

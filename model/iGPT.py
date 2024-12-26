@@ -191,7 +191,7 @@ class NotMyModel(L.LightningModule):
             )
         
         # Logging
-        self.log("hihi/CE Loss", loss, prog_bar=True)
+        self.log("ahihi/CE Loss", loss, prog_bar=True)
         
         return loss
         
@@ -222,7 +222,7 @@ class NotMyModel(L.LightningModule):
         )
 
         lr_scheduler = {'scheduler': CosineAnnealingLR(optimizer=optimizer, T_max=500, eta_min=self.lr*0.1),
-                    'name': 'hihi/learning_rate',
+                    'name': 'ahihi/learning_rate',
                     'interval':'step',
                     'frequency': 1}
         
@@ -231,6 +231,6 @@ class NotMyModel(L.LightningModule):
     def on_before_optimizer_step(self, optimizer):
         norm = grad_norm(self.network, norm_type=2)
         avg_norm = sum(norm.values())/len(norm)
-        self.log('hihi/norm', avg_norm, prog_bar=True)
+        self.log('ahihi/norm', avg_norm, prog_bar=True)
 
         

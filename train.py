@@ -7,8 +7,8 @@ from lightning.pytorch.callbacks import TQDMProgressBar
 from utils.dataloaderlite import SentenceDataset, preprocessText, StreamingCsvDataset
 from model.iGPT import NotMyModel
 
-batch_size = 84
-accumulation_step = 1
+batch_size = 64
+accumulation_step = 36
 
 root_dir = "experiments" # log folder
 resume_ckpt = None  # checkpoint path, 
@@ -47,7 +47,8 @@ def main():
                         strategy='ddp_find_unused_parameters_true',
                         log_every_n_steps=1,
                         gradient_clip_val=1.0,
-                        max_steps=5000,
+                        # max_steps=5000,
+                        max_epochs=50,
                         accumulate_grad_batches= accumulation_step,
                         num_nodes=1)
 
