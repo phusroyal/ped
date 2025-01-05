@@ -29,6 +29,7 @@ def write_datafile(filename, sents_np):
     df.to_csv(filename, sep=',', index=False, encoding='utf-8')
 
 nprocs = max(1, os.cpu_count()//2)
+num_val = 5000
 with mp.Pool(nprocs) as pool:
     shard_index = 0
     sent_count = 0
@@ -47,8 +48,8 @@ with mp.Pool(nprocs) as pool:
             progress_bar.update(len(sents))
         else:
             # write the current shard and start a new one
-            split = "val" if shard_index == 0 else "train"
-            filename = os.path.join(DATA_CACHE_DIR, f"wikitext_{split}_{shard_index:06d}")
+            # split = "val" if shard_index == 0 else "train"
+            filename = os.path.join(DATA_CACHE_DIR, f"wikitext_train_{shard_index:06d}")
             # split the document into whatever fits in this shard; the remainder goes to next one
             remainder = shard_size - sent_count
             progress_bar.update(remainder)
@@ -62,6 +63,8 @@ with mp.Pool(nprocs) as pool:
     
     # write any remaining tokens as the last shard
     if sent_count != 0:
-        split = "val" if shard_index == 0 else "train"
-        filename = os.path.join(DATA_CACHE_DIR, f"wikitext_{split}_{shard_index:06d}")
-        write_datafile(filename, all_sents_np[:sent_count])
+        # split = "val" if shard_index == 0 else "train"
+        filename = os.path.join(DATA_CACHE_DIR, f"wikitext_train_{shard_index:06d}")
+        write_datafile(filename, all_sents_np[:sent_count-num_val])
+        filename = os.path.join(DATA_CACHE_DIR, f"wikitext_val_{shard_index:06d}")
+        write_datafile(filename, all_sents_np[sent_count-num_val:sent_count])

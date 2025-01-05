@@ -10,8 +10,8 @@ from lightning.pytorch.utilities import grad_norm
 class iGPTConfig:
     block_size: int = 256
     vocab_size: int = 50304
-    n_layer_main: int = 4
-    n_layer_idea: int = 2
+    n_layer_main: int = 12
+    n_layer_idea: int = 12
     n_head: int = 8
     n_embd_main: int = 768
     n_embd_idea: int = 512
@@ -177,8 +177,7 @@ class NotMyModel(L.LightningModule):
         self.config = iGPTConfig()
         self.network = iGPT(self.config)
         self.lr = 6e-4
-        self.weight_decay = 0.1
-        
+        self.weight_decay = 0.1 
 
     def training_step(self, batch, batch_idx):
         self.log('global_step', self.global_step)
@@ -189,18 +188,37 @@ class NotMyModel(L.LightningModule):
                 predicted_y.view(-1, predicted_y.size(-1)),
                 y.view(-1)
             )
-        
         # Logging
-        self.log("ahihi/CE Loss", loss, prog_bar=True)
+        self.log("ahihi/Train Loss", loss, prog_bar=True)
         
         return loss
         
     def validation_step(self, batch, batch_idx):
-        pass
+        # unpack the batch
+        x, y, ix = batch
+        
+        # forward pass through the model
+        predicted_y = self.network(x, ix)
+        
+        # compute loss
+        loss = F.cross_entropy(
+            predicted_y.view(-1, predicted_y.size(-1)),
+            y.view(-1)
+        )
+        
+        # you might log the validation loss so that it shows on progress bar
+        self.log("ahihi/Val loss", loss, prog_bar=True)
+        
+        return loss
         
 
     def test_step(self, batch, batch_idx):
         pass
+
+    def forward(self, batch):
+        x, ix = batch
+        logits = self.network(x, ix)
+        return logits
     
     
     def configure_optimizers(self):
@@ -222,7 +240,7 @@ class NotMyModel(L.LightningModule):
         )
 
         lr_scheduler = {'scheduler': CosineAnnealingLR(optimizer=optimizer, T_max=500, eta_min=self.lr*0.1),
-                    'name': 'ahihi/learning_rate',
+                    'name': 'learning_rate',
                     'interval':'step',
                     'frequency': 1}
         
