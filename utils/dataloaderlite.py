@@ -150,6 +150,54 @@ class StreamingCsvDataset(IterableDataset):
         for file_path in self.file_paths:
             yield from self.parse_csv_rows(file_path)
 
+import csv
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+class ValCsvDataset(Dataset):
+    """
+    Loads CSV file for validation.
+    """
+
+    def __init__(self, file_path, max_length=77, text_column=0, skip_header=True):
+        super().__init__()
+        self.samples = []
+
+        self.eos = 50257
+        self.T = max_length
+
+        # Load the base encoding
+        enc = tiktoken.get_encoding("gpt2")
+        # Define new special tokens
+        new_special_tokens = {
+            "<|endofsent|>": self.eos,  # Make sure this ID does not conflict with existing tokens
+        }
+        # Create a new encoding with the added special tokens
+        self.extended_enc = tiktoken.Encoding(
+            name="gpt2_extended",
+            pat_str=enc._pat_str,  # Use the same pattern as the original encoding
+            mergeable_ranks=enc._mergeable_ranks,  # Keep the same mergeable ranks
+            special_tokens={**enc._special_tokens, **new_special_tokens},  # Extend special tokens
+        )
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            if skip_header:
+                next(reader, None)  # Skip header row if needed
+
+            for i, row in enumerate(reader):
+                if len(row) > text_column:
+                    text = row[text_column]
+                    self.samples.append(text)
+
+    def __len__(self):
+        return 5000
+
+    def __getitem__(self, idx):
+        text = self.samples[idx]
+        return preprocessText(text, self.extended_enc, self.eos, self.T)
+
+#
 # class SentenceDataLoaderLite:
 #     def __init__(self, eos, enc, block_size, B, process_rank=0, num_processes=1):
 
