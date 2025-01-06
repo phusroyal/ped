@@ -8,8 +8,8 @@ from lightning.pytorch.callbacks import TQDMProgressBar
 from utils.dataloaderlite import SentenceDataset, preprocessText, StreamingCsvDataset, ValCsvDataset
 from model.iGPT import NotMyModel
 
-batch_size = 64
-accumulation_step = 36
+batch_size = 136
+accumulation_step = 10
 
 root_dir = "experiments" # log folder
 resume_ckpt = None  # checkpoint path, 
@@ -52,7 +52,7 @@ def main():
                         max_epochs=50,
                         accumulate_grad_batches= accumulation_step,
                         num_nodes=1,
-                        val_check_interval=0.2,
+                        val_check_interval=100,
                         precision="bf16-mixed") # bf16-mixed, 16-mixed
 
     # Train
