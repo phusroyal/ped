@@ -13,6 +13,7 @@ remote_name = "wikitext-103-v1"
 shard_size = int(1e6) # 100M sents per shard, total of 100 shards
 
 nltk.download('punkt')
+nltk.download('punkt_tab')
 
 DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), local_dir)
 os.makedirs(DATA_CACHE_DIR, exist_ok=True)
@@ -31,12 +32,14 @@ def write_datafile(filename, sents_np):
 nprocs = max(1, os.cpu_count()//2)
 num_val = 5000
 with mp.Pool(nprocs) as pool:
+    total_sent = 0
     shard_index = 0
     sent_count = 0
     all_sents_np = [0]*shard_size
     progress_bar = None
 
     for sents in pool.imap(split_sent, fw, chunksize=16):
+        total_sent += len(sents)
         # is there enough space in the current shard for the new sents?
         if sent_count + len(sents) < shard_size:
             # simply append sents to current shard
@@ -68,3 +71,5 @@ with mp.Pool(nprocs) as pool:
         write_datafile(filename, all_sents_np[:sent_count-num_val])
         filename = os.path.join(DATA_CACHE_DIR, f"wikitext_val_{shard_index:06d}")
         write_datafile(filename, all_sents_np[sent_count-num_val:sent_count])
+
+print("total sents: ", total_sent)
