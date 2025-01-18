@@ -1,8 +1,7 @@
 """
-This is iGPT v0.1.0
-- Encoder is sentence-transformers/all-MiniLM-L6-v2 (dim 768) (https://www.sbert.net/docs/sentence_transformer/pretrained_models.html)
-- Decoder is GPT (from scratch)
-- ivec is treated as a prepended token
+This is iGPT v0.0.0
+- Both encoder and decoder are coded from scratch
+- ivec is added to MLP
 """
 
 import torch
@@ -11,16 +10,18 @@ import torch.nn.functional as F
 import lightning as L
 from dataclasses import dataclass
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from sentence_transformers import SentenceTransformer
 from lightning.pytorch.utilities import grad_norm
 
 @dataclass
 class iGPTConfig:
     block_size: int = 256
     vocab_size: int = 50304
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
+    n_layer_main: int = 12
+    n_layer_idea: int = 12
+    n_head: int = 8
+    n_embd_main: int = 768
+    n_embd_idea: int = 512
+    idea_dim: int = 768
 
 
 class CausalSelfAttention(nn.Module):
@@ -32,7 +33,6 @@ class CausalSelfAttention(nn.Module):
 
         self.c_attn = nn.Linear(n_embd, 3 * n_embd)
         self.c_proj = nn.Linear(n_embd, n_embd)
-        self.c_proj.SCALE_INIT = 1
 
         self.register_buffer(
             "bias",
@@ -60,7 +60,6 @@ class MLP(nn.Module):
         self.c_fc = nn.Linear(n_embd, 4 * n_embd)
         self.gelu = nn.GELU(approximate='tanh')
         self.c_proj = nn.Linear(4 * n_embd, n_embd)
-        self.c_proj.SCALE_INIT = 1
 
     def forward(self, x):
         x = self.c_fc(x)
@@ -70,64 +69,71 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    # removed the 'idea_vector' argument / logic
-    def __init__(self, n_embd, n_head, block_size):
+    def __init__(self, n_embd, n_head, block_size, add_idea=False):
         super().__init__()
+        self.add_idea = add_idea
+
         self.ln_1 = nn.LayerNorm(n_embd)
         self.attn = CausalSelfAttention(n_embd, n_head, block_size)
         self.ln_2 = nn.LayerNorm(n_embd)
         self.mlp = MLP(n_embd)
 
-    def forward(self, x):
+    def forward(self, x, idea_vector=None):
         x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+        if self.add_idea and idea_vector is not None:
+            B, T, C = x.shape
+            idea_3d = idea_vector.unsqueeze(1).expand(-1, T, -1)
+            x = x + self.mlp(self.ln_2(x + idea_3d))
+        else:
+            x = x + self.mlp(self.ln_2(x))
         return x
 
 
 class iGPT(nn.Module):
-    """
-    GPT model that prepends a single 'idea token' derived from
-    all-mpnet-base-v2 embeddings at the start of the sequence.
-    """
-
-    def __init__(self, config: iGPTConfig, st_model_name='sentence-transformers/all-MiniLM-L6-v2'):
+    def __init__(self, config: iGPTConfig):
         super().__init__()
         self.config = config
 
-        # Load the Sentence Transformer model
-        self.sbert = SentenceTransformer(st_model_name)
-        # The output dimension is typically 768
-        self.sbert_dim = 768
-
-        # Project from sbert_dim -> GPT embedding dimension if needed
-        if self.sbert_dim != config.n_embd:
-            self.idea_proj = nn.Linear(self.sbert_dim, config.n_embd)
-        else:
-            self.idea_proj = nn.Identity()
-
-        # GPT sub-block
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        self.wpe = nn.Embedding(config.block_size+1, config.n_embd)
-        self.blocks = nn.ModuleList([
+        # iGPT sub-block
+        self.wte_i = nn.Embedding(config.vocab_size, config.n_embd_idea)
+        self.wpe_i = nn.Embedding(config.block_size, config.n_embd_idea)
+        self.blocks_i = nn.ModuleList([
             Block(
-                n_embd=config.n_embd,
+                n_embd=config.n_embd_idea,
                 n_head=config.n_head,
-                block_size=config.block_size+1  # +1 for the prepended idea token
+                block_size=config.block_size,
+                add_idea=False
             )
-            for _ in range(config.n_layer)
+            for _ in range(config.n_layer_idea)
         ])
-        self.ln_f = nn.LayerNorm(config.n_embd)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.ln_f_i = nn.LayerNorm(config.n_embd_idea)
+        self.idea_head = nn.Linear(config.n_embd_idea, config.idea_dim, bias=False)
 
-        # Weight tying
-        self.wte.weight = self.lm_head.weight
+        # main GPT sub-block
+        self.wte_g = nn.Embedding(config.vocab_size, config.n_embd_main)
+        self.wpe_g = nn.Embedding(config.block_size, config.n_embd_main)
+        self.blocks_g = nn.ModuleList([
+            Block(
+                n_embd=config.n_embd_main,
+                n_head=config.n_head,
+                block_size=config.block_size,
+                add_idea=True
+            )
+            for _ in range(config.n_layer_main)
+        ])
+        self.ln_f_g = nn.LayerNorm(config.n_embd_main)
+        self.lm_head = nn.Linear(config.n_embd_main, config.vocab_size, bias=False)
+
+        # optional weight sharing
+        # comment out if you don't want wte_g to share with lm_head
+        self.wte_g.weight = self.lm_head.weight
 
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             std = 0.02
-            if hasattr(module, 'SCALE_INIT'):
+            if hasattr(module, 'NANOGPT_SCALE_INIT'):
                 std *= (2 * self.config.n_layer) ** -0.5
             torch.nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
@@ -135,51 +141,39 @@ class iGPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, x, sentence_list):
+    def forward(self, x, ix):
         """
-        x: (B, T) GPT tokens
-        bert_input: dict containing `input_ids` and `attention_mask` for BERT
-                    or any relevant input to produce the idea vector.
-                    shape (B, seq_len_bert)
-
-        Returns: (B, T, vocab_size) for language model tokens (excluding the idea token)
+        x:       (B, T_main) tokens for main GPT
+        ix:      (B, T_idea) tokens for iGPT
+        targets: (B, T_main) for cross-entropy
         """
-        B, T = x.size()
 
-        # Get the idea embeddings from all-mpnet-base-v2
-        with torch.no_grad():
-            idea_vecs = self.sbert.encode(sentence_list, convert_to_tensor=True, device=x.device)  # shape (B, 768)
-        # Project if needed
-        idea_emb = self.idea_proj(idea_vecs)  # shape (B, n_embd)
-        idea_emb = idea_emb.unsqueeze(1)      # shape (B,1,n_embd)
+        # iGPT sub-model
+        B_i, T_i = ix.size()
+        pos_i = torch.arange(T_i, dtype=torch.long, device=x.device)
+        tok_i = self.wte_i(ix)
+        pos_emb_i = self.wpe_i(pos_i)
+        hidden_i = tok_i + pos_emb_i
 
-        # GPT embeddings
-        pos_ids = torch.arange(T, dtype=torch.long, device=x.device)
-        tok_emb = self.wte(x)  # (B, T, n_embd)
-        pos_emb = self.wpe(pos_ids)  # (T, n_embd)
-        pos_emb = pos_emb.unsqueeze(0).expand(B, T, -1)
-        hidden = tok_emb + pos_emb
+        for block in self.blocks_i:
+            hidden_i = block(hidden_i)
 
-        # position embeddings for the extra token as position=0
-        idea_pos_emb = self.wpe(torch.tensor([0], device=x.device)).view(1,1,-1)
-        idea_token = idea_emb + idea_pos_emb  # (B,1,n_embd)
+        hidden_i = self.ln_f_i(hidden_i)
+        # last token's hidden => idea vector
+        idea_vector = self.idea_head(hidden_i[:, -1, :])  # (B_i, idea_dim)
 
-        # Shift the original positions by +1
-        shift_pos_ids = torch.arange(1, T+1, device=x.device)
-        shift_pos_emb = self.wpe(shift_pos_ids).unsqueeze(0).expand(B, T, -1)
-        hidden = tok_emb + shift_pos_emb
+        # main GPT sub-model
+        B_m, T_m = x.size()
+        pos_m = torch.arange(T_m, dtype=torch.long, device=x.device)
+        tok_m = self.wte_g(x)
+        pos_emb_m = self.wpe_g(pos_m)
+        hidden_m = tok_m + pos_emb_m
 
-        # Prepend the idea token
-        hidden = torch.cat([idea_token, hidden], dim=1)  # (B, T+1, n_embd)
-
-        # Forward the blocks
-        for block in self.blocks:
-            hidden_m = block(hidden_m)
-
-        # final layer norm
-        hidden_m = self.ln_f(hidden_m)  # (B, T+1, n_embd)
-        # skip the idea token when we produce logits for next-word prediction
-        logits = self.lm_head(hidden_m[:, 1:, :])  # shape (B, T, vocab_size)
+        for block in self.blocks_g:
+            hidden_m = block(hidden_m, idea_vector=idea_vector)
+        
+        hidden_m = self.ln_f_g(hidden_m)
+        logits = self.lm_head(hidden_m)  # (B_m, T_m, vocab_size)
         
         return logits
 
@@ -191,30 +185,41 @@ class NotMyModel(L.LightningModule):
         self.lr = 6e-4
         self.weight_decay = 0.1 
 
-
     def training_step(self, batch, batch_idx):
         self.log('global_step', self.global_step)
 
-        x, y, sentence_list = batch
-        predicted_y = self.network(x, sentence_list)
-        loss = F.cross_entropy(predicted_y.view(-1, predicted_y.size(-1)), y.view(-1))
+        x, y, ix = batch
+        predicted_y = self.network(x, ix)
+        loss = F.cross_entropy(
+                predicted_y.view(-1, predicted_y.size(-1)),
+                y.view(-1)
+            )
         # Logging
         self.log("ahihi/Train Loss", loss, prog_bar=True)
+        
         return loss
         
-
     def validation_step(self, batch, batch_idx):
-        x, y, sentence_list = batch
-        predicted_y = self.network(x, sentence_list)
-        loss = F.cross_entropy(predicted_y.view(-1, predicted_y.size(-1)), y.view(-1))
-
+        # unpack the batch
+        x, y, ix = batch
+        
+        # forward pass through the model
+        predicted_y = self.network(x, ix)
+        
+        # compute loss
+        loss = F.cross_entropy(
+            predicted_y.view(-1, predicted_y.size(-1)),
+            y.view(-1)
+        )
+        
+        # you might log the validation loss so that it shows on progress bar
         self.log("ahihi/Val loss", loss, prog_bar=True)
+        
         return loss
         
 
     def test_step(self, batch, batch_idx):
         pass
-
 
     def forward(self, batch):
         x, ix = batch
