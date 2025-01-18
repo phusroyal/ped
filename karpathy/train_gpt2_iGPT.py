@@ -110,7 +110,7 @@ train_loader = DataLoader(train_dataset, batch_size=B, shuffle=True)
 train_loader = infinite_loader(train_loader)
 # -----------------------------------------------------------------------------
 # create model
-from model.unifiedGPT import UnifiedGPT, UnifiedGPTConfig
+from model.others.unifiedGPT import UnifiedGPT, UnifiedGPTConfig
 
 # main_gpt_config = GPTConfig(block_size=T, vocab_size=50304, n_layer=8, n_head=12, n_embd=768)
 # idea_gpt_config = iGPTConfig(block_size=T, vocab_size=50304, n_layer=4, n_head=8, n_embd=512, idea_dim=768)
