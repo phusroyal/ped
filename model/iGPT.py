@@ -34,13 +34,6 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(n_embd, n_embd)
         self.c_proj.SCALE_INIT = 1
 
-        self.register_buffer(
-            "bias",
-            torch.tril(torch.ones(block_size, block_size)).view(
-                1, 1, block_size, block_size
-            )
-        )
-
     def forward(self, x):
         B, T, C = x.size()
         qkv = self.c_attn(x)                   # (B, T, 3C)
@@ -138,9 +131,7 @@ class iGPT(nn.Module):
     def forward(self, x, sentence_list):
         """
         x: (B, T) GPT tokens
-        bert_input: dict containing `input_ids` and `attention_mask` for BERT
-                    or any relevant input to produce the idea vector.
-                    shape (B, seq_len_bert)
+        sentence_list: List[str] of length B
 
         Returns: (B, T, vocab_size) for language model tokens (excluding the idea token)
         """
@@ -154,33 +145,19 @@ class iGPT(nn.Module):
         idea_emb = idea_emb.unsqueeze(1)      # shape (B,1,n_embd)
 
         # GPT embeddings
-        pos_ids = torch.arange(T, dtype=torch.long, device=x.device)
         tok_emb = self.wte(x)  # (B, T, n_embd)
-        pos_emb = self.wpe(pos_ids)  # (T, n_embd)
-        pos_emb = pos_emb.unsqueeze(0).expand(B, T, -1)
-        hidden = tok_emb + pos_emb
+        hidden = torch.cat([idea_emb, tok_emb], dim=1)  # (B, T+1, n_embd)
+        pos_ids = torch.arange(0, T+1, device=x.device)  # length T+1
+        pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(B, T+1, -1)
+        hidden = hidden + pos_emb  # (B, T+1, n_embd)
 
-        # position embeddings for the extra token as position=0
-        idea_pos_emb = self.wpe(torch.tensor([0], device=x.device)).view(1,1,-1)
-        idea_token = idea_emb + idea_pos_emb  # (B,1,n_embd)
-
-        # Shift the original positions by +1
-        shift_pos_ids = torch.arange(1, T+1, device=x.device)
-        shift_pos_emb = self.wpe(shift_pos_ids).unsqueeze(0).expand(B, T, -1)
-        hidden = tok_emb + shift_pos_emb
-
-        # Prepend the idea token
-        hidden = torch.cat([idea_token, hidden], dim=1)  # (B, T+1, n_embd)
-
-        # Forward the blocks
+        # Forward through GPT
         for block in self.blocks:
-            hidden_m = block(hidden_m)
+            hidden = block(hidden)
+        hidden = self.ln_f(hidden)  # (B, T+1, n_embd)
 
-        # final layer norm
-        hidden_m = self.ln_f(hidden_m)  # (B, T+1, n_embd)
-        # skip the idea token when we produce logits for next-word prediction
-        logits = self.lm_head(hidden_m[:, 1:, :])  # shape (B, T, vocab_size)
-        
+        # skip the idea token when producing logits for next-word prediction
+        logits = self.lm_head(hidden[:, 1:, :])  # shape (B, T, vocab_size)
         return logits
 
 class NotMyModel(L.LightningModule):
