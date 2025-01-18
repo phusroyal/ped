@@ -1,6 +1,6 @@
 """
 This is iGPT v0.1.0
-- Encoder is sentence-transformers/all-MiniLM-L6-v2 (dim 768) (https://www.sbert.net/docs/sentence_transformer/pretrained_models.html)
+- Encoder is sentence-transformers/all-mpnet-base-v2 (dim 768) (https://www.sbert.net/docs/sentence_transformer/pretrained_models.html)
 - Decoder is GPT (from scratch)
 - ivec is treated as a prepended token
 """
@@ -83,7 +83,7 @@ class iGPT(nn.Module):
     all-mpnet-base-v2 embeddings at the start of the sequence.
     """
 
-    def __init__(self, config: iGPTConfig, st_model_name='sentence-transformers/all-MiniLM-L6-v2'):
+    def __init__(self, config: iGPTConfig, st_model_name='sentence-transformers/all-mpnet-base-v2'):
         super().__init__()
         self.config = config
 
@@ -229,4 +229,4 @@ class NotMyModel(L.LightningModule):
         avg_norm = sum(norm.values())/len(norm)
         self.log('ahihi/norm', avg_norm, prog_bar=True)
 
-        
+            
