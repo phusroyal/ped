@@ -3,7 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataset import IterableDataset
 from dataclasses import dataclass
 
-from text_preprocess import preprocess_text
+from .text_preprocess import preprocess_text
 
 class StreamingCsvDataset(IterableDataset):
     """

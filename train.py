@@ -46,7 +46,7 @@ def main():
     )
     trainer = L.Trainer(default_root_dir=root_dir,
                         callbacks=[checkpoint_callback, lr_monitor, TQDMProgressBar(refresh_rate=50)],
-                        strategy= 'ddp', #'ddp_find_unused_parameters_true',
+                        strategy= 'ddp_find_unused_parameters_true', #'ddp_find_unused_parameters_true',
                         log_every_n_steps=1,
                         gradient_clip_val=1.0,
                         max_epochs=4,
