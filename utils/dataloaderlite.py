@@ -34,7 +34,7 @@ class StreamingCsvDataset(IterableDataset):
         enc = tiktoken.get_encoding("gpt2")
         # Define new special tokens
         new_special_tokens = {
-            "<|endofsent|>": self.eos,  # Make sure this ID does not conflict with existing tokens
+            "<|endofsent|>": self.eos,  
         }
         # Create a new encoding with the added special tokens
         self.extended_enc = tiktoken.Encoding(
@@ -45,7 +45,7 @@ class StreamingCsvDataset(IterableDataset):
         )
 
     def __len__(self):
-        return 3400000
+        return 3498072
 
     def parse_csv_rows(self, file_path):
         """
@@ -107,7 +107,7 @@ class ValCsvDataset(Dataset):
                     self.samples.append(text)
 
     def __len__(self):
-        return 7000
+        return 6987
 
     def __getitem__(self, idx):
         text = self.samples[idx]

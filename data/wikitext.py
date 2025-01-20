@@ -6,6 +6,8 @@ import pandas as pd
 from datasets import load_dataset  
 from tqdm import tqdm            
 
+#[train] Total sentences processed: 3498072
+#[val] Total sentences processed: 6987
 # ------------------------------------------
 local_dir = "wikitext"
 remote_name = "wikitext-103-v1"

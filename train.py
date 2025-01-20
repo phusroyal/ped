@@ -1,14 +1,14 @@
 import lightning as L
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import torch
 import os
 import glob
 from lightning.pytorch.callbacks import TQDMProgressBar
-from utils.dataloaderlite import SentenceDataset, preprocessText, StreamingCsvDataset, ValCsvDataset
+from utils.dataloaderlite import StreamingCsvDataset, ValCsvDataset
 from model.iGPT import NotMyModel
 
-batch_size = 2 #136
+batch_size = 168 #136
 accumulation_step = 1
 
 root_dir = "experiments" # log folder
@@ -52,7 +52,7 @@ def main():
                         max_epochs=4,
                         accumulate_grad_batches= accumulation_step,
                         num_nodes=1,
-                        devices=[],
+                        devices=[1,2],
                         val_check_interval=100,
                         precision="16-mixed") # bf16-mixed, 16-mixed
 
