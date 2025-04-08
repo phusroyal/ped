@@ -72,4 +72,4 @@ rm ~/Miniconda3-latest-*.sh
 ```
 
 # Huggingface
-pip install -U "huggingface_hub[cli]"
+pip install -U "huggingface_hub[cli]"# test
