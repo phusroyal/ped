@@ -1,4 +1,5 @@
 experiments
 wikitext
 hellaswag
+checkpoints
 *.pyc
