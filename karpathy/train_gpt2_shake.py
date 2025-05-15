@@ -99,6 +99,8 @@ class GPT(nn.Module):
         # init params
         self.apply(self._init_weights)
 
+        
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             std = 0.02

@@ -6,7 +6,7 @@ import os
 import glob
 from lightning.pytorch.callbacks import TQDMProgressBar
 from utils.dataloaderlite import StreamingCsvDataset, ValCsvDataset
-from model.iGPT import NotMyModel
+from model.iGPT_010 import NotMyModel
 
 batch_size = 168 #136
 accumulation_step = 1
@@ -19,7 +19,7 @@ train_shards = glob.glob(os.path.join(data_root, '*_train_*'))
 val_shard = glob.glob(os.path.join(data_root, '*_val_*'))
 
 def main():
-    L.seed_everything(666)
+    L.seed_everything(777)
 
     torch.set_float32_matmul_precision('high')
 
@@ -49,12 +49,12 @@ def main():
                         strategy= 'ddp_find_unused_parameters_true', #'ddp_find_unused_parameters_true',
                         log_every_n_steps=1,
                         gradient_clip_val=1.0,
-                        max_epochs=4,
+                        max_epochs=5,
                         accumulate_grad_batches= accumulation_step,
                         num_nodes=1,
                         devices=[1,2],
                         val_check_interval=100,
-                        precision="16-mixed") # bf16-mixed, 16-mixed
+                        precision="bf16-mixed") # bf16-mixed, 16-mixed
 
     # Train
     trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=resume_ckpt)

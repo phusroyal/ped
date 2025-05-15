@@ -1,8 +1,8 @@
 import torch
 
-def preprocess_text(sent, enc, eos, max_length=77):
+def preprocess_text(sent, enc, max_length=32):
     """
-        Text preprocess for iGPT v010
+        Text preprocess for iGPT v011
         Return:
             x: torch.Tensor (T)
             y: torch.Tensor (T)
@@ -14,16 +14,15 @@ def preprocess_text(sent, enc, eos, max_length=77):
     y = torch.zeros((T), dtype=torch.long)
 
     encoded_sent = enc.encode(sent)
-    encoded_sent.insert(0, eos)  # Add <eos> token at the start
-    encoded_sent.append(eos)    # Add <eos> token at the end
+    encoded_sent.append(enc.eot_token)    # Add <eot> token at the end
     tokens = torch.tensor(encoded_sent, dtype=torch.long)
         
     # Ensure the tokens fit in the fixed sequence length T
-    tokens = tokens[:T+1]  # Truncate if tokens exceed T+1 (account for <eos>)
+    tokens = tokens[:T+1]  # Truncate if tokens exceed T+1 (account for <eot>)
 
     # Assign to x and y with proper slicing
-    x[:len(tokens)-1] = tokens[:-1]
-    y[:len(tokens)-1] = tokens[1:]
+    x[:len(tokens)-1] = tokens[:-1] # x = [a,b,c], eos as sent emb will be added at position 0. Later, x = [sent_emb,a,b,c]
+    y[:len(tokens)-1] = tokens # y = [a,b,c,eos]
     
     return x, y, sent
 
