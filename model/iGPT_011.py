@@ -43,7 +43,8 @@ class PretrainedIdearEncoder(nn.Module):
         with torch.no_grad():
             idea_vecs = self.sbert.encode(sentence_list, convert_to_tensor=True)  # shape (B, 768)
         return idea_vecs
-    
+
+
 class IdeaPredictor(nn.Module):
     def __init__(self, 
                 block_size=32,
@@ -60,7 +61,19 @@ class IdeaPredictor(nn.Module):
                 # init_std=0.02,
                 norm_layer=nn.LayerNorm,
                 ):
-        
+        """
+        Initialize the IdeaPredictor model.
+        Args:
+            block_size (int): The maximum number of sequences for the predictor.
+            input_dim (int): The dimension of the input idea embeddings.
+            predictor_embed_dim (int): The embedding dimension for the predictor.
+            predictor_depth (int): The number of transformer blocks in the predictor.
+            predictor_num_heads (int): The number of attention heads in each transformer block.
+            mlp_ratio (float): The ratio of the hidden dimension to the embedding dimension in the MLP.
+            norm_layer (nn.Module): The normalization layer to use.
+        Returns:
+            None
+        """
         super().__init__()
         self.block_size = block_size
         self.input_dim = input_dim
@@ -99,6 +112,10 @@ class IdeaPredictor(nn.Module):
         self.predictor_ln = nn.LayerNorm(predictor_embed_dim)
 
         # might need weight tying
+        # what and why is weight tying?
+        # what: Weight tying is a technique where the same weight matrix is used for both the input and output projections in a model, reducing the number of parameters and potentially improving generalization.
+        # why: This can help prevent overfitting, especially in models with large vocabularies or embedding spaces, by forcing the model to learn a more compact representation.
+        # as idea prediction is a regression task, we do not use weight tying
 
         self.apply(self._init_weights)
 
@@ -115,8 +132,10 @@ class IdeaPredictor(nn.Module):
 
     def forward(self, idea_vecs, target=None):
         """
-        idea_vecs: (B, I, inputdim) from all-mpnet-base-v2
-        Returns: (B, I, inputdim) 
+        Forward pass for the IdeaPredictor model.
+        Args:
+            idea_vecs (torch.Tensor): Input idea embeddings of shape (B, I, input_dim), where B is the batch size and I is the number of ideas.
+            target (torch.Tensor, optional): Target values for training. Not used in this implementation.
         """
         B, I = idea_vecs.size(0), idea_vecs.size(1)
 
@@ -135,7 +154,9 @@ class IdeaPredictor(nn.Module):
 
         # Project back to the original dimension
         hidden = self.predictor_proj(hidden)
+
         return hidden
+    
 
 class IdeaDecoder(nn.Module):
     def __init__(self,
@@ -154,6 +175,19 @@ class IdeaDecoder(nn.Module):
                 # init_std=0.02,
                 norm_layer=nn.LayerNorm,
                 ):
+        """ Initialize the IdeaDecoder model.
+        Args:
+            block_size (int): The maximum number of tokens for the decoder.
+            vocab_size (int): The size of the vocabulary for the decoder.
+            input_dim (int): The dimension of the input idea embeddings.
+            decoder_embed_dim (int): The embedding dimension for the decoder.
+            decoder_depth (int): The number of transformer blocks in the decoder.
+            decoder_num_heads (int): The number of attention heads in each transformer block.
+            mlp_ratio (float): The ratio of the hidden dimension to the embedding dimension in the MLP.
+            norm_layer (nn.Module): The normalization layer to use.
+        Returns:
+            None
+        """
         super().__init__()
         self.block_size = block_size
         self.input_dim = input_dim
@@ -210,12 +244,13 @@ class IdeaDecoder(nn.Module):
 
     def forward(self, x, idea_vec, target=None):
         """
-        x: (B*I, T) GPT tokens 
-        idea_vecs: (B*I, inputdim) from all-mpnet-base-v2
-
-        Returns: 
-        yt: (B, I, T, vocab_size) logits for next-word prediction
-        ys: (B, I, predictor_embed_dim) for next-idea prediction
+        Forward pass for the IdeaDecoder model.
+        Args:
+            x (torch.Tensor): Input token indices of shape (B*I, T), where B is the batch size and I is the number of ideas.
+            idea_vec (torch.Tensor): Input idea embeddings of shape (B*I, input_dim).
+            target (torch.Tensor, optional): Target values for training. Not used in this implementation.
+        Returns:
+            logits (torch.Tensor): Logits for next-word prediction of shape (B*I, T, vocab_size).   
         """
         B, T = x.size()   # now B and T are ints
 
@@ -234,9 +269,13 @@ class IdeaDecoder(nn.Module):
         # Forward through decoder blocks
         for block in self.block:
             hidden = block(hidden)
+
+        # Normalize the hidden states
         hidden = self.decoder_ln(hidden)
+
         # skip the idea token when producing logits for next-word prediction
         logits = self.decoder_lm_head(hidden[:, 1:, :])  # shape (B*I, T, vocab_size)
+
         return logits
 
 
@@ -281,12 +320,14 @@ class iGPT(nn.Module):
 
     def forward(self, xt, xs):
         """
-        xt: (B*I, T) GPT tokens 
-        xs: (B, I) idea sentences
-
-        Returns: 
-        yt: (B, I, T, vocab_size) logits for next-word prediction
-        ys: (B, I, predictor_embed_dim) for next-idea prediction
+        Forward pass for the iGPT model.
+        Args:
+            xt (torch.Tensor): Input token indices of shape (B*I, T), where B is the batch size and I is the number of ideas.
+            xs (list of str): List of sentences corresponding to each idea in the batch.
+        Returns:
+            yt (torch.Tensor): Logits for next-word prediction of shape (B*I, T, vocab_size).
+            ys (torch.Tensor): Idea embeddings of shape (B*I, predictor_embed_dim).
+            idea_vecs (torch.Tensor): Idea embeddings from the Sentence Transformer of shape (B, I, 768).
         """
         B, I, T = xt.size(), xt.size(1), xt.size(2)
 
@@ -303,3 +344,60 @@ class iGPT(nn.Module):
         yt = self.idea_decoder(xt, ys)
 
         return yt, ys, idea_vecs
+
+# Small test configuration
+test_config = iGPTConfig(
+    id_pred_block_size=32,
+    id_pred_n_layer=2,      # Reduced from 6
+    id_pred_n_head=4,       # Reduced from 12
+    id_pred_n_embd=128,     # Reduced from 384
+    id_dec_block_size=32,
+    id_dec_n_layer=2,       # Reduced from 6
+    id_dec_n_head=4,        # Reduced from 12
+    id_dec_n_embd=128,      # Reduced from 384
+    mlp_ratio=4.0,
+    vocab_size=50304
+)
+
+def test_igpt():
+    # Small test configuration
+    test_config = iGPTConfig(
+        id_pred_block_size=32,
+        id_pred_n_layer=2,
+        id_pred_n_head=4,
+        id_pred_n_embd=128,
+        id_dec_block_size=32,
+        id_dec_n_layer=2,
+        id_dec_n_head=4,
+        id_dec_n_embd=128,
+        mlp_ratio=4.0,
+        vocab_size=50304
+    )
+    
+    # Initialize model
+    model = iGPT(test_config)
+    
+    # Create sample inputs
+    sample_tokens = torch.randint(0, 50304, (2, 16))  # 2 sequences of length 16
+    # sample 10  sentences for the idea encoder
+    sample_sentences =  [
+        "This is a sample sentence for idea 1.",
+        "This is another example for idea 2.",
+        "Here is a third idea sentence.",
+        "This is the fourth idea.",
+        "Fifth idea sentence goes here.",
+        "Sixth idea example.",
+        "Seventh idea sentence.",
+        "Eighth idea example.",
+        "Ninth idea sentence.",
+        "Tenth idea example."
+    ]
+    
+    # Forward pass
+    with torch.no_grad():
+        logits, embeddings, _ = model(sample_tokens, sample_sentences)
+    
+    print(f"Output logits shape: {logits.shape}")
+    print(f"Output embeddings shape: {embeddings.shape}")
+    
+    return model
