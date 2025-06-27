@@ -5,6 +5,19 @@ This is iGPT v0.1.0
 - ivec is treated as a prepended token
 """
 
+# %%
+
+import sys
+import os
+
+# Add the parent directory to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Or more simply:
+sys.path.append('..')
+
+os.environ["https_proxy"] = "http://xen03.iitd.ac.in:3128"
+os.environ["http_proxy"] = "http://xen03.iitd.ac.in:3128"
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,6 +29,8 @@ from lightning.pytorch.utilities import grad_norm
 
 from model.transformer_blocks import Block, CausalSelfAttention, MLP
 
+BASE_DIR = '/home/anwoy/phuhoang/ped/'
+
 @dataclass
 class iGPTConfig:
     id_pred_block_size: int = 32
@@ -26,23 +41,56 @@ class iGPTConfig:
     id_dec_n_layer: int = 6
     id_dec_n_head: int = 12
     id_dec_n_embd: int = 384
-    mlp_ratio: float = 4.0
+    mlp_ratio: float = 4
     vocab_size: int = 50304
 
 
 class PretrainedIdearEncoder(nn.Module):
-    def __init__(self, st_model_name='sentence-transformers/all-mpnet-base-v2'):
+    def __init__(self, 
+                 st_model_name='sentence-transformers/all-mpnet-base-v2',
+                 device='cpu',
+                 local_file_only=True,
+                 torch_dtype=torch.float32,
+                 ):
         super().__init__()
+        """Initialize the PretrainedIdeaEncoder model.
+        Args:
+            st_model_name (str): The name of the Sentence Transformer model to use.
+            device (str): The device to run the model on ('cpu' or 'cuda').
+            local_file_only (bool): Whether to only use local files for the model.
+            torch_dtype (torch.dtype): The data type for the model weights.
+        """
+
         # Load the Sentence Transformer model
-        self.sbert = SentenceTransformer(st_model_name)
+        self.device = device
+        cache_folder = os.path.join(BASE_DIR, 'saved_models', st_model_name)
+
+        self.sbert = SentenceTransformer(st_model_name,
+                                         device=device,
+                                        cache_folder=cache_folder,
+                                        local_files_only=local_file_only,
+                                        model_kwargs={
+                                            'torch_dtype': torch_dtype
+                                        })
+        
+        # Set the model to evaluation mode
+        self.sbert.eval()
+
+    def get_sentence_embedding_dimension(self):                                 
         # The output dimension is typically 768
-        self.sbert_dim = 768
+        return self.sbert.get_sentence_embedding_dimension()
 
     def forward(self, sentence_list):
         # Get the idea embeddings from all-mpnet-base-v2
+        """Forward pass for the PretrainedIdeaEncoder model.
+        Args:
+            sentence_list (list of str): List of sentences to encode.
+        Returns:
+            torch.Tensor: Idea embeddings of shape (B, sbert_dim), where B is the batch size, and sbert_dim is the dimension of the sentence embeddings (typically 768).
+        """
         with torch.no_grad():
             idea_vecs = self.sbert.encode(sentence_list, convert_to_tensor=True)  # shape (B, 768)
-        return idea_vecs
+        return idea_vecs.to(self.device)
 
 
 class IdeaPredictor(nn.Module):
@@ -52,7 +100,7 @@ class IdeaPredictor(nn.Module):
                 predictor_embed_dim=384,
                 predictor_depth=12,
                 predictor_num_heads=12,
-                mlp_ratio=4.0,
+                mlp_ratio=4,
                 # qkv_bias=False,
                 # qk_scale=None,
                 # drop_rate=0.0,
@@ -166,7 +214,7 @@ class IdeaDecoder(nn.Module):
                 decoder_embed_dim=384,
                 decoder_depth=6,
                 decoder_num_heads=12,
-                mlp_ratio=4.0,
+                mlp_ratio=4,
                 # qkv_bias=False,
                 # qk_scale=None,
                 # drop_rate=0.0,
@@ -285,20 +333,30 @@ class iGPT(nn.Module):
     all-mpnet-base-v2 embeddings at the start of the sequence.
     """
 
-    def __init__(self, config: iGPTConfig, st_model_name='sentence-transformers/all-mpnet-base-v2'):
+    def __init__(self, config: iGPTConfig,
+                 device='cpu',
+                 torch_dtype=torch.float32,
+                 st_model_name='sentence-transformers/all-mpnet-base-v2'):
         super().__init__()
         self.config = config
+        self.device = device
+        self.torch_dtype = torch_dtype
 
         # -- idea encoder
-        # Load the Sentence Transformer model
-        self.sbert = SentenceTransformer(st_model_name)
-        self.sbert.eval()  # Set to evaluation mode
+        self.sbert = PretrainedIdearEncoder(
+            st_model_name=st_model_name,
+            device=device,
+            local_file_only=False,
+            torch_dtype=torch_dtype
+        )
         self.sbert_dim = self.sbert.get_sentence_embedding_dimension()  # typically 768
+        # print device of sbert
+        print(f"Sentence Transformer model loaded on device: {self.sbert.device}")
         
         # -- idea predictor
         self.idea_predictor = IdeaPredictor(
-            idea_size=config.id_pred_block_size,
-            embed_dim=self.sbert_dim,
+            block_size=config.id_pred_block_size,
+            input_dim=self.sbert_dim,
             predictor_embed_dim=config.id_pred_n_embd,
             predictor_depth=config.id_pred_n_layer,
             predictor_num_heads=config.id_pred_n_head,
@@ -329,7 +387,11 @@ class iGPT(nn.Module):
             ys (torch.Tensor): Idea embeddings of shape (B*I, predictor_embed_dim).
             idea_vecs (torch.Tensor): Idea embeddings from the Sentence Transformer of shape (B, I, 768).
         """
-        B, I, T = xt.size(), xt.size(1), xt.size(2)
+        # B, I, T = xt.size(), xt.size(1), xt.size(2)
+
+        print(f"xt shape: {xt.shape}, xs length: {len(xs)}")  # Debugging line
+        print(f"xt: {xt}, xs: {xs}")  # Debugging line
+        a
 
         # Get the idea embeddings from all-mpnet-base-v2 for all sentences I in the batch
         with torch.no_grad():
@@ -345,59 +407,64 @@ class iGPT(nn.Module):
 
         return yt, ys, idea_vecs
 
-# Small test configuration
+
+
+# %%
+# def test_igpt():
+    # Small test configuration
+
 test_config = iGPTConfig(
     id_pred_block_size=32,
-    id_pred_n_layer=2,      # Reduced from 6
-    id_pred_n_head=4,       # Reduced from 12
-    id_pred_n_embd=128,     # Reduced from 384
+    id_pred_n_layer=2,
+    id_pred_n_head=4,
+    id_pred_n_embd=128,
     id_dec_block_size=32,
-    id_dec_n_layer=2,       # Reduced from 6
-    id_dec_n_head=4,        # Reduced from 12
-    id_dec_n_embd=128,      # Reduced from 384
-    mlp_ratio=4.0,
+    id_dec_n_layer=2,
+    id_dec_n_head=4,
+    id_dec_n_embd=128,
+    mlp_ratio=4,
     vocab_size=50304
 )
 
-def test_igpt():
-    # Small test configuration
-    test_config = iGPTConfig(
-        id_pred_block_size=32,
-        id_pred_n_layer=2,
-        id_pred_n_head=4,
-        id_pred_n_embd=128,
-        id_dec_block_size=32,
-        id_dec_n_layer=2,
-        id_dec_n_head=4,
-        id_dec_n_embd=128,
-        mlp_ratio=4.0,
-        vocab_size=50304
-    )
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# set precision high
+torch.set_float32_matmul_precision('high')  # Set precision for matmul operations
+
+# Initialize model
+model = iGPT(test_config,
+             device=device, 
+             torch_dtype=torch.bfloat16,)
+
+# Create sample inputs
+sample_tokens = torch.randint(0, 50304, (2, 16))  # 2 sequences of length 16
+# sample 10  sentences for the idea encoder
+sample_sentences =  [
+    "This is a sample sentence for idea 1.",
+    "This is another example for idea 2.",
+]
+
+# Forward pass
+with torch.no_grad():
+    logits, embeddings, _ = model(sample_tokens, sample_sentences)
+
+print(f"Output logits shape: {logits.shape}")
+print(f"Output embeddings shape: {embeddings.shape}")
     
-    # Initialize model
-    model = iGPT(test_config)
-    
-    # Create sample inputs
-    sample_tokens = torch.randint(0, 50304, (2, 16))  # 2 sequences of length 16
-    # sample 10  sentences for the idea encoder
-    sample_sentences =  [
-        "This is a sample sentence for idea 1.",
-        "This is another example for idea 2.",
-        "Here is a third idea sentence.",
-        "This is the fourth idea.",
-        "Fifth idea sentence goes here.",
-        "Sixth idea example.",
-        "Seventh idea sentence.",
-        "Eighth idea example.",
-        "Ninth idea sentence.",
-        "Tenth idea example."
-    ]
-    
-    # Forward pass
-    with torch.no_grad():
-        logits, embeddings, _ = model(sample_tokens, sample_sentences)
-    
-    print(f"Output logits shape: {logits.shape}")
-    print(f"Output embeddings shape: {embeddings.shape}")
-    
-    return model
+    # return model
+
+
+# %%
+# ping google
+import requests
+def ping_google():
+    try:
+        response = requests.get('https://huggingface.co', timeout=5)
+        if response.status_code == 200:
+            print("Google is reachable.")
+        else:
+            print(f"Google returned status code: {response.status_code}")
+    except requests.RequestException as e:
+        print(f"Error reaching Google: {e}")
+ping_google()
+
+# %%

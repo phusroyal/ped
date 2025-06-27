@@ -1,0 +1,15 @@
+nohup /home/anwoy/proxy.sh
+nohup /home/anwoy/proxy_logout.sh
+
+export https_proxy="http://xen03.iitd.ac.in:3128"
+export http_proxy="http://xen03.iitd.ac.in:3128"
+
+import os
+os.environ["https_proxy"] = "http://xen03.iitd.ac.in:3128"
+os.environ["http_proxy"] = "http://xen03.iitd.ac.in:3128"
+
+proxy login 
+Already logged in
+-e Enjoy!
+-e Enjoy!
+proxy login 

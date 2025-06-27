@@ -2,4 +2,7 @@ experiments
 wikitext
 hellaswag
 checkpoints
+saved_models
 *.pyc
+#
+nohup.out
