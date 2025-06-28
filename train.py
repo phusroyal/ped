@@ -6,7 +6,7 @@ import os
 import glob
 from lightning.pytorch.callbacks import TQDMProgressBar
 from utils.dataloaderlite import StreamingCsvDataset, ValCsvDataset
-from model.iGPT_010 import NotMyModel
+from model.others.iGPT_010 import NotMyModel
 
 batch_size = 168 #136
 accumulation_step = 1

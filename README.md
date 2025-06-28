@@ -74,4 +74,6 @@ rm ~/Miniconda3-latest-*.sh
 # Huggingface
 pip install -U "huggingface_hub[cli]"# test
 
-hi
+# Todos
+- [ ] remove https_proxy
+- 
