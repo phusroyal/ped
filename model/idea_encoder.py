@@ -1,15 +1,5 @@
-import sys
-import os
-
-# Add the parent directory to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Or more simply:
-sys.path.append('..')
-
-os.environ["https_proxy"] = "http://xen03.iitd.ac.in:3128"
-os.environ["http_proxy"] = "http://xen03.iitd.ac.in:3128"
-
 import torch
+import os
 import torch.nn as nn
 from sentence_transformers import SentenceTransformer
 
@@ -59,8 +49,10 @@ class PretrainedIdearEncoder(nn.Module):
         """Forward pass for the PretrainedIdeaEncoder model.
         Args:
             sentence_list (list of str): List of sentences to encode.
+            convert_to_tensor (bool): Whether to convert the output to a tensor.
         Returns:
-            torch.Tensor: Idea embeddings of shape (B, sbert_dim), where B is the batch size, and sbert_dim is the dimension of the sentence embeddings (typically 768).
+            torch.Tensor: idea embeddings of shape (B, I, sbert_dim), where B is the batch size and I is the number of ideas.
+            
         """
 
         with torch.no_grad():
